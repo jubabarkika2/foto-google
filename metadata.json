@@ -1,0 +1,6 @@
+{
+  "name": "Galeria de Fotos do Gmail",
+  "description": "Galeria de fotos automática alimentada pelas imagens recebidas no seu Gmail.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
