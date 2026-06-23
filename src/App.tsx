@@ -41,6 +41,7 @@ export default function App() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginMethod, setLoginMethod] = useState<'popup' | 'redirect' | null>(null);
   const [isInsideIframe, setIsInsideIframe] = useState(false);
+  const [authError, setAuthError] = useState<{ code: string; message: string; full?: string } | null>(null);
 
   // Detecta se está embutido em um IFrame para evitar erros do Google OAuth
   useEffect(() => {
@@ -214,15 +215,19 @@ export default function App() {
   // Fluxo inteligente de login para computadores e celulares
   const handleLogin = async (useRedirectMode = false) => {
     setIsLoggingIn(true);
+    setAuthError(null);
     setLoginMethod(useRedirectMode ? 'redirect' : 'popup');
     try {
       await googleSignIn(useRedirectMode);
       // Se for popup, o resultado retorna na hora. No redirect, haverá recarga da página.
     } catch (err: any) {
       console.error('Falha de Login:', err);
-      if (err.code !== 'auth/popup-blocked') {
-        alert(`Erro ao fazer login: ${err.message || err}`);
-      }
+      // Salva o erro de autenticação para expor solução amigável e explicativa
+      setAuthError({
+        code: err.code || 'unknown',
+        message: err.message || 'Erro desconhecido ao autenticar no Firebase.',
+        full: err.toString ? err.toString() : JSON.stringify(err)
+      });
     } finally {
       setIsLoggingIn(false);
       setLoginMethod(null);
@@ -421,6 +426,69 @@ export default function App() {
                   )}
                   <span>Usar Redirecionamento Puro (Sem popup)</span>
                 </button>
+
+                {/* Diagnóstico estruturado de Erros de Autenticação do Firebase */}
+                {authError && (
+                  <div className="mt-4 p-4 bg-red-50 rounded-2xl border border-red-200 text-left space-y-3">
+                    <div className="flex items-center gap-2 text-red-700">
+                      <span className="font-semibold text-xs uppercase tracking-wider font-mono bg-red-100 px-2 py-0.5 rounded-md">
+                        {authError.code}
+                      </span>
+                    </div>
+                    
+                    {authError.code === 'auth/unauthorized-domain' ? (
+                      <div className="space-y-2">
+                        <p className="text-xs text-red-800 leading-relaxed">
+                          🛡️ <strong>Domínio Desconhecido:</strong> Este domínio não está cadastrado e autorizado nas configurações de segurança do seu projeto no Firebase.
+                        </p>
+                        <div className="bg-white p-2.5 rounded-xl border border-red-100 text-[11px] text-gray-600 font-sans space-y-1">
+                          <p className="font-semibold text-gray-800">Como corrigir agora mesmo:</p>
+                          <ol className="list-decimal list-inside space-y-1">
+                            <li>Vá no painel do <a href="https://console.firebase.google.com" target="_blank" rel="noopener noreferrer" className="text-rose-500 font-semibold underline">Firebase Console</a></li>
+                            <li>Acesse <strong>Authentication</strong> &gt; aba <strong>Settings</strong></li>
+                            <li>Selecione <strong>Authorized domains</strong> e adicione o domínio abaixo:</li>
+                          </ol>
+                        </div>
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <input 
+                            type="text" 
+                            readOnly 
+                            value={window.location.hostname} 
+                            className="bg-white px-2 py-1 border border-gray-200 rounded-lg text-xs font-mono text-gray-700 flex-1 truncate select-all" 
+                          />
+                          <button 
+                            onClick={() => {
+                              navigator.clipboard.writeText(window.location.hostname);
+                              alert('Domínio copiado para a área de transferência!');
+                            }}
+                            className="text-[10px] font-bold bg-gray-900 text-white px-2.5 py-1.5 rounded-lg active:scale-95 transition cursor-pointer"
+                          >
+                            Copiar
+                          </button>
+                        </div>
+                      </div>
+                    ) : authError.code === 'auth/operation-not-allowed' ? (
+                      <div className="space-y-1.5 text-xs text-red-800">
+                        <p>
+                          ⚙️ <strong>Provedor desativado:</strong> O método de login por conta Google não está habilitado em seu Firebase.
+                        </p>
+                        <p className="leading-snug text-gray-600 bg-white p-2 border border-red-100 rounded-xl text-[11px]">
+                          <strong>Para ativar:</strong> Vá no Firebase Console &gt; <strong>Authentication</strong> &gt; aba <strong>Sign-in method</strong> &gt; Clique em <strong>Adicionar provedor</strong> &gt; Escolha <strong>Google</strong> &gt; Clique em Ativar e salve.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1 text-[11px] text-red-800 leading-normal">
+                        <p><strong>Detalhes técnicos da falha:</strong></p>
+                        <p className="font-mono bg-white p-2 rounded-lg border border-red-100 text-[10px] break-all max-h-24 overflow-y-auto">
+                          {authError.full || authError.message}
+                        </p>
+                        <p className="text-gray-500 pt-1">
+                          Certifique-se de que configurou corretamente o provedor OAuth do Google no console do seu projeto Firebase.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Detalhes sobre os limites de escopo */}
