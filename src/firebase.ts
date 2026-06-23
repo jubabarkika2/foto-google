@@ -41,10 +41,32 @@ const setStoredToken = (token: string | null) => {
   }
 };
 
+export const getStoredUser = (): any | null => {
+  try {
+    const saved = localStorage.getItem('gmail_gallery_gsi_user');
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const setStoredUser = (user: any | null) => {
+  try {
+    if (user) {
+      localStorage.setItem('gmail_gallery_gsi_user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('gmail_gallery_gsi_user');
+    }
+  } catch {}
+};
+
 // Token de acesso cached
 let cachedAccessToken: string | null = getStoredToken();
+// Usuário GSI cached
+let cachedGsiUser: any | null = getStoredUser();
 // Callback arrays para notificar mudanças do token
 const tokenListeners: Array<(token: string | null) => void> = [];
+
 
 export const registerTokenListener = (listener: (token: string | null) => void) => {
   tokenListeners.push(listener);
@@ -71,9 +93,21 @@ export const isMobileBrowser = (): boolean => {
 
 // Inicializa o listener de autenticação e tenta obter o resultado do redirecionamento
 export const initAuth = (
-  onAuthSuccess?: (user: User, token: string) => void,
+  onAuthSuccess?: (user: any, token: string) => void,
   onAuthFailure?: () => void
 ) => {
+  // Se já temos dados do login GSI salvos localmente, inicializa direto de imediato!
+  const storedUser = getStoredUser();
+  const storedToken = getStoredToken();
+  if (storedUser && storedToken) {
+    cachedAccessToken = storedToken;
+    cachedGsiUser = storedUser;
+    notifyTokenListeners(storedToken);
+    if (onAuthSuccess) {
+      setTimeout(() => onAuthSuccess(storedUser, storedToken), 10);
+    }
+  }
+
   // Trata o resultado do redirect (muito útil em navegadores móveis)
   getRedirectResult(auth)
     .then((result) => {
@@ -109,6 +143,14 @@ export const initAuth = (
         if (onAuthFailure) onAuthFailure();
       }
     } else {
+      // Se não temos usuário Firebase mas temos usuário GSI, mantemos conectado via GSI!
+      const gsiUser = getStoredUser();
+      const gsiToken = getStoredToken();
+      if (gsiUser && gsiToken) {
+        if (onAuthSuccess) onAuthSuccess(gsiUser, gsiToken);
+        return;
+      }
+
       cachedAccessToken = null;
       setStoredToken(null);
       notifyTokenListeners(null);
@@ -161,8 +203,127 @@ export const getAccessToken = async (): Promise<string | null> => {
 };
 
 export const logout = async () => {
-  await auth.signOut();
+  try {
+    await auth.signOut();
+  } catch (err) {
+    console.warn('Erro ao deslogar do Firebase (pode ser ignorado se login GSI ativo):', err);
+  }
   cachedAccessToken = null;
+  cachedGsiUser = null;
   setStoredToken(null);
+  setStoredUser(null);
   notifyTokenListeners(null);
 };
+
+// --- INTEGRAÇÃO DIRETA COM O GOOGLE IDENTITY SERVICES (GSI) ---
+
+let gsiScriptParsed = false;
+
+export const loadGsi = (): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    if ((window as any).google?.accounts?.oauth2) {
+      resolve((window as any).google);
+      return;
+    }
+    if (gsiScriptParsed) {
+      // Já está carregando, espera um tempo ou verifica presença
+      const interval = setInterval(() => {
+        if ((window as any).google?.accounts?.oauth2) {
+          clearInterval(interval);
+          resolve((window as any).google);
+        }
+      }, 100);
+      return;
+    }
+    
+    gsiScriptParsed = true;
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      resolve((window as any).google);
+    };
+    script.onerror = (e) => {
+      gsiScriptParsed = false;
+      reject(new Error('Falha ao carregar o script do Google Identity Services (GSI). Verifique sua conexão.'));
+    };
+    document.head.appendChild(script);
+  });
+};
+
+export const signInWithGsi = async (
+  clientId: string,
+  scope = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email'
+): Promise<{ user: any; accessToken: string }> => {
+  const google = await loadGsi();
+  return new Promise((resolve, reject) => {
+    try {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: scope,
+        callback: async (response: any) => {
+          if (response.error) {
+            reject(new Error(response.error_description || response.error));
+            return;
+          }
+          if (response.access_token) {
+            const token = response.access_token;
+            try {
+              // Busca os dados do perfil do usuário na API oficial de informações do Google
+              const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              
+              if (!userRes.ok) {
+                throw new Error('Falha ao obter perfil de usuário.');
+              }
+              
+              const googleUser = await userRes.json();
+              const profileUser = {
+                uid: googleUser.sub,
+                displayName: googleUser.name || googleUser.given_name || 'Usuário Google',
+                email: googleUser.email,
+                photoURL: googleUser.picture || null,
+              };
+
+              cachedAccessToken = token;
+              cachedGsiUser = profileUser;
+              setStoredToken(token);
+              setStoredUser(profileUser);
+              notifyTokenListeners(token);
+              
+              resolve({ user: profileUser, accessToken: token });
+            } catch (err) {
+              // Fallback gracioso com usuário simulado se a API de UserInfo falhar
+              console.warn('Falha ao buscar dados detalhados. Usando usuário simplificado:', err);
+              const fallbackUser = {
+                uid: 'gsi-user-' + Date.now(),
+                displayName: 'Usuário Google Autenticado',
+                email: 'conectado@gsi.com',
+                photoURL: null,
+              };
+              
+              cachedAccessToken = token;
+              cachedGsiUser = fallbackUser;
+              setStoredToken(token);
+              setStoredUser(fallbackUser);
+              notifyTokenListeners(token);
+              
+              resolve({ user: fallbackUser, accessToken: token });
+            }
+          } else {
+            reject(new Error('Nenhum Access Token retornado pelo Google Identity Services.'));
+          }
+        },
+        error_callback: (err: any) => {
+          reject(err);
+        }
+      });
+      client.requestAccessToken();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
