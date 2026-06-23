@@ -40,6 +40,16 @@ export default function App() {
   const [accessToken, setAccessToken] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginMethod, setLoginMethod] = useState<'popup' | 'redirect' | null>(null);
+  const [isInsideIframe, setIsInsideIframe] = useState(false);
+
+  // Detecta se está embutido em um IFrame para evitar erros do Google OAuth
+  useEffect(() => {
+    try {
+      setIsInsideIframe(window.self !== window.top);
+    } catch {
+      setIsInsideIframe(true);
+    }
+  }, []);
 
   // Estados da Galeria
   const [photos, setPhotos] = useState<GalleryPhoto[]>([]);
@@ -344,18 +354,28 @@ export default function App() {
                   </p>
                   
                   {/* Alerta inteligente de Iframe com botão de escape */}
-                  <div className="mt-3.5 p-3.5 bg-rose-50/80 border border-rose-100 rounded-2xl text-left space-y-2.5">
-                    <p className="text-[11px] text-rose-800 leading-relaxed">
-                      ⚠️ <strong>Aviso Importante:</strong> Redirecionamentos de login do Google costumam falhar dentro do visualizador embutido (iframe) por restrições do navegador. 
-                      Para resolver isso, clique no botão abaixo para abrir a galeria em tela cheia numa nova aba e logue sem nenhum impedimento!
-                    </p>
-                    <button
-                      onClick={() => window.open(window.location.href, '_blank')}
-                      className="w-full py-1.5 px-3 bg-white hover:bg-rose-100/55 border border-rose-200 text-rose-600 rounded-xl text-[10px] font-bold tracking-wider transition uppercase cursor-pointer text-center shadow-2xs active:scale-95"
-                    >
-                      Abrir Galeria em Nova Aba ↗
-                    </button>
-                  </div>
+                  {isInsideIframe ? (
+                    <div className="mt-3.5 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left space-y-3">
+                      <p className="text-xs text-amber-800 leading-relaxed font-sans">
+                        ⚠️ <strong>Atenção Celular & Navegadores:</strong> Você está visualizando o app dentro de uma janela embutida (iframe). O Google bloqueia o login nessa situação para proteger sua conta.
+                      </p>
+                      <p className="text-[11px] text-amber-700 leading-normal">
+                        Para logar perfeitamente sem erros de popup, clique no botão abaixo para abrir a galeria em tela cheia na sua própria aba do navegador:
+                      </p>
+                      <button
+                        onClick={() => window.open(window.location.href, '_blank')}
+                        className="w-full py-2.5 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold tracking-wider transition uppercase cursor-pointer text-center shadow-md active:scale-95 flex items-center justify-center gap-2"
+                      >
+                        Abrir Galeria em Nova Aba ↗
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-3.5 p-3.5 bg-emerald-50/50 border border-emerald-100 rounded-2xl text-left">
+                      <p className="text-[11px] text-emerald-800 leading-relaxed font-sans">
+                        ✓ <strong>Pronto para Conectar:</strong> Executando fora de frames. Se estiver no celular, prefira o botão de <strong>Redirecionamento Puro</strong> abaixo para evitar qualquer bloqueio automática de pop-up.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -365,8 +385,8 @@ export default function App() {
                 {/* 1. Método Recomendado para Computadores */}
                 <button
                   onClick={() => handleLogin(false)}
-                  disabled={isLoggingIn}
-                  className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-60 cursor-pointer active:scale-[0.98]"
+                  disabled={isLoggingIn || isInsideIframe}
+                  className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-gray-950 hover:bg-gray-800 text-white font-medium rounded-xl text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-[0.98]"
                 >
                   {isLoggingIn && loginMethod === 'popup' ? (
                     <Loader className="h-4 w-4 animate-spin text-gray-400" />
@@ -384,22 +404,22 @@ export default function App() {
                 {/* Linha separadora discreta */}
                 <div className="flex items-center gap-2 my-2 text-[10px] text-gray-400 font-mono uppercase tracking-widest justify-center">
                   <span className="h-px bg-gray-100 flex-1" />
-                  <span>Se estiver no celular</span>
+                  <span>Método para Celular</span>
                   <span className="h-px bg-gray-100 flex-1" />
                 </div>
 
                 {/* 2. Método Corrigido de Redirect para Celular */}
                 <button
                   onClick={() => handleLogin(true)}
-                  disabled={isLoggingIn}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold rounded-xl text-xs border border-rose-100/60 transition-all disabled:opacity-60 cursor-pointer active:scale-[0.98]"
+                  disabled={isLoggingIn || isInsideIframe}
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold rounded-xl text-xs border border-rose-100/60 transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-[0.98]"
                 >
                   {isLoggingIn && loginMethod === 'redirect' ? (
                     <Loader className="h-3.5 w-3.5 animate-spin text-rose-400" />
                   ) : (
                     <Smartphone className="h-4.5 w-4.5" />
                   )}
-                  <span>Usar Redirecionamento de Celular</span>
+                  <span>Usar Redirecionamento Puro (Sem popup)</span>
                 </button>
               </div>
 
