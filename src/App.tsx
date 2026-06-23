@@ -336,12 +336,26 @@ export default function App() {
                   <KeyRound className="h-6 w-6 text-rose-500" />
                 </div>
                 <div>
-                  <h3 className="font-display font-bold text-lg text-gray-900">
+                  <h3 className="font-display font-bold text-lg text-gray-950">
                     Acesse sua Galeria
                   </h3>
-                  <p className="text-xs text-gray-400 mt-1 leading-normal">
-                    Conecte sua conta do Google de forma autorizada. Você controla os termos.
+                  <p className="text-xs text-gray-500 mt-1 leading-normal">
+                    Conecte sua conta do Google de forma autorizada.
                   </p>
+                  
+                  {/* Alerta inteligente de Iframe com botão de escape */}
+                  <div className="mt-3.5 p-3.5 bg-rose-50/80 border border-rose-100 rounded-2xl text-left space-y-2.5">
+                    <p className="text-[11px] text-rose-800 leading-relaxed">
+                      ⚠️ <strong>Aviso Importante:</strong> Redirecionamentos de login do Google costumam falhar dentro do visualizador embutido (iframe) por restrições do navegador. 
+                      Para resolver isso, clique no botão abaixo para abrir a galeria em tela cheia numa nova aba e logue sem nenhum impedimento!
+                    </p>
+                    <button
+                      onClick={() => window.open(window.location.href, '_blank')}
+                      className="w-full py-1.5 px-3 bg-white hover:bg-rose-100/55 border border-rose-200 text-rose-600 rounded-xl text-[10px] font-bold tracking-wider transition uppercase cursor-pointer text-center shadow-2xs active:scale-95"
+                    >
+                      Abrir Galeria em Nova Aba ↗
+                    </button>
+                  </div>
                 </div>
               </div>
 

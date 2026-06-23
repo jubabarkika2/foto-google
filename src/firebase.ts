@@ -19,8 +19,30 @@ provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
 
 // Flag para indicar fluxo de entrada
 let isSigningIn = false;
-// Token de acesso cached em memória
-let cachedAccessToken: string | null = null;
+
+// Tenta carregar o token salvo anteriormente no localStorage para reter a conexão em reloads
+const getStoredToken = (): string | null => {
+  try {
+    return localStorage.getItem('gmail_gallery_access_token');
+  } catch {
+    return null;
+  }
+};
+
+const setStoredToken = (token: string | null) => {
+  try {
+    if (token) {
+      localStorage.setItem('gmail_gallery_access_token', token);
+    } else {
+      localStorage.removeItem('gmail_gallery_access_token');
+    }
+  } catch (err) {
+    console.error('Erro ao salvar token localmente:', err);
+  }
+};
+
+// Token de acesso cached
+let cachedAccessToken: string | null = getStoredToken();
 // Callback arrays para notificar mudanças do token
 const tokenListeners: Array<(token: string | null) => void> = [];
 
@@ -59,6 +81,7 @@ export const initAuth = (
         const credential = GoogleAuthProvider.credentialFromResult(result);
         if (credential?.accessToken) {
           cachedAccessToken = credential.accessToken;
+          setStoredToken(cachedAccessToken);
           notifyTokenListeners(cachedAccessToken);
           if (onAuthSuccess) {
             onAuthSuccess(result.user, cachedAccessToken);
@@ -72,17 +95,22 @@ export const initAuth = (
 
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+      // Se já temos o token no cache ou localStorage, aproveitamos ele
+      const currentToken = cachedAccessToken || getStoredToken();
+      if (currentToken) {
+        cachedAccessToken = currentToken;
+        setStoredToken(currentToken);
+        if (onAuthSuccess) onAuthSuccess(user, currentToken);
       } else if (!isSigningIn) {
-        // Se temos usuário mas não o token (ex: recarga de página),
-        // limpamos o cache e acionamos falha para que o usuário possa reautorizar se necessário
+        // Se temos usuário mas perdemos o token, limpamos tudo
         cachedAccessToken = null;
+        setStoredToken(null);
         notifyTokenListeners(null);
         if (onAuthFailure) onAuthFailure();
       }
     } else {
       cachedAccessToken = null;
+      setStoredToken(null);
       notifyTokenListeners(null);
       if (onAuthFailure) onAuthFailure();
     }
@@ -94,14 +122,14 @@ export const googleSignIn = async (useRedirect = false): Promise<{ user: User; a
   try {
     isSigningIn = true;
     
-    // Se o usuário explicitamente pediu redirect ou se detectamos que está em dispositivo móvel
+    // Se o usuário pedir redirect ou se detectamos que está em dispositivo móvel
     if (useRedirect || isMobileBrowser()) {
       console.log('Utilizando signInWithRedirect para evitar bloqueios de popup em dispositivos móveis.');
       await signInWithRedirect(auth, provider);
-      return null; // O navegador será redirecionado, então não retornará diretamente
+      return null;
     }
 
-    // Caso contrário, tenta Popup (comportamento ideal para Desktop e IFrames)
+    // Caso contrário, tenta Popup
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
@@ -109,6 +137,7 @@ export const googleSignIn = async (useRedirect = false): Promise<{ user: User; a
     }
 
     cachedAccessToken = credential.accessToken;
+    setStoredToken(cachedAccessToken);
     notifyTokenListeners(cachedAccessToken);
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
@@ -128,11 +157,12 @@ export const googleSignIn = async (useRedirect = false): Promise<{ user: User; a
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  return cachedAccessToken;
+  return cachedAccessToken || getStoredToken();
 };
 
 export const logout = async () => {
   await auth.signOut();
   cachedAccessToken = null;
+  setStoredToken(null);
   notifyTokenListeners(null);
 };
